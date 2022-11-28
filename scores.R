@@ -1,0 +1,5 @@
+d_cor <- readxl::read_xlsx(path = "unusualprofiletemplate.xlsx", sheet = "cormatrix")
+d_calculations <- readxl::read_xlsx('unusualprofiletemplate.xlsx', sheet = 'calculations')
+d_test <- readxl::read_xlsx(path = "unusualprofiletemplate.xlsx", sheet = "1. Tests", n_max = d_calculations$`n tests`)
+d_scores <- readxl::read_xlsx(path = "unusualprofiletemplate.xlsx", sheet = "3. Scores", n_max = d_calculations$`n people`)
+readxl::excel_sheets("unusualprofiletemplate.xlsx")

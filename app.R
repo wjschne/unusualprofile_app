@@ -18,6 +18,9 @@ library(thematic)
 my_font <- "Roboto Condensed"
 my_size <- 20
 
+my_theme <- bs_theme(bootswatch = "simplex",
+                     base_font = font_google(my_font))
+
 # Options
 options(shiny.usecairo = T, # use Cairo device for better antialiasing
         scipen = 999 # Do not use scientific notation
@@ -89,14 +92,15 @@ ui <- fluidPage(
 sidebarPanel(titlePanel("UnusualProfile"),
              h3("Mahalanobis Distances Applied to Conditional Distributions"),
              downloadButton("downloadData", "Download Data Template"),
+             fileInput("datainput", "Import Data", accept = ".xlsx"),
              uiOutput("distances")),    
     mainPanel(
-        h1("This app is not yet fully function! Check back when it is ready."),
-        tabsetPanel(
+        h1("This app works, but is in a preliminary state. More functions to come."),
+        tabsetPanel(id = "Main",
             tabPanel("Paste Data",  
                      textAreaInput("caption","Paste Data from Excel Here",
                                                   "
-Tests	Scores	Means	SDs	Distance 1	Distance 2	Immediate Verbal Memory	Delayed Verbal Memory	Immediate Visual Memory	Delayed Visual Memory
+Tests	Scores	Means	SDs	Distance Immediate predicts Delayed	Distance Visual predicts Verbal	Immediate Verbal Memory	Delayed Verbal Memory	Immediate Visual Memory	Delayed Visual Memory
 Immediate Verbal Memory	120	100	15	2	1				
 Delayed Verbal Memory	120	100	15	1	1	0.8			
 Immediate Visual Memory	80	100	15	2	2	0.7	0.6		
@@ -188,6 +192,7 @@ server <- function(input, output) {
     observeEvent(input$inputdistance, {
         # req(input$inputdistance, input$inputdistance != "NA")
         selectedDistance(input$inputdistance)
+        updateTabsetPanel(inputId = "Main", selected = "Distances")
     }, ignoreInit = TRUE)
     
     output$downloadData <- downloadHandler(
@@ -199,29 +204,35 @@ server <- function(input, output) {
 
     
     output$customdistances <- renderPlot({
-        print(selectedDistance())
+        # print(selectedDistance())
 
         dd <-  d_Distance() |> filter(Distance == selectedDistance())
-        if (length(dd$v_ind) == 0) dd$v_ind <- NULL
-        if (length(dd$v_ind_composite) == 0) dd$v_ind_composite <- NULL
+        v_all <- c(dd$v_dep[[1]],dd$v_ind[[1]], dd$v_ind_composite[[1]])
         
-        print(dd$v_dep[[1]])
+        if (length(dd$v_ind[[1]]) == 0) dd$v_ind <- NULL
+        if (length(dd$v_ind_composite[[1]]) == 0) dd$v_ind_composite <- NULL
+        
+        
+        # print(dd$v_ind[[1]])
+        # print(dd$v_dep[[1]])
         cond_maha(
             data = d_scores(),
-            R = R(),
+            R = R()[v_all, v_all],
             v_dep = dd$v_dep[[1]],
             v_ind = dd$v_ind[[1]],
             v_ind_composites = dd$v_ind_composite[[1]],
-            mu = d() |> select(Tests, Means) |> deframe(),
-            sigma = d() |> select(Tests, SDs) |> deframe()
+            mu = d() |> select(Tests, Means) |> filter(Tests %in% v_all) |> deframe(),
+            sigma = d() |> select(Tests, SDs) |> filter(Tests %in% v_all) |> deframe()
         ) |> 
-            plot(family = my_font) + 
+            plot(family = my_font) +
             theme(strip.text.x = element_text(my_font, size = my_size * .4),
                   axis.text.x = element_text(my_font, size = my_size * .4),
                   axis.text.y = element_text(my_font, size = my_size * .4),
-                  plot.subtitle = element_blank()) + 
-            scale_x_discrete(NULL, labels = \(x) str_wrap(x, 10)) 
+                  plot.subtitle = element_blank()) +
+            scale_x_discrete(NULL, labels = \(x) str_wrap(x, 10))
     }, height = 700, res = 150)
+    
+
         
     
     
@@ -233,8 +244,7 @@ server <- function(input, output) {
 
 
 
-my_theme <- bs_theme(bootswatch = "simplex",
-                     base_font = font_google(my_font))
+
 
 ggplot2::theme_set(ggplot2::theme_minimal(base_size = my_size, base_family = my_font))
 
