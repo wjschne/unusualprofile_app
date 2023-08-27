@@ -5,9 +5,9 @@ account: w-joel-schneider
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 7359774
-bundleId: 6435025
+bundleId: 6636229
 url: https://w-joel-schneider.shinyapps.io/unusualprofile/
-when: 1666618613.14984
-lastSyncTime: 1666618613.14985
+when: 1671026545.63963
+lastSyncTime: 1671026545.63965
 asMultiple: FALSE
 asStatic: FALSE
