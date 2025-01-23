@@ -109,11 +109,22 @@ ui <- fluidPage(theme = my_theme,
                     shiny::wellPanel(
                     uiOutput("person"),
                     uiOutput("distances"),
-                    checkboxInput("sort", value = FALSE, label = "Sort Scores")),
+                    shiny::fixedRow(checkboxInput("sort", value = FALSE, label = "Sort by Score"),
+                                    checkboxInput("color", value = FALSE, label = "Sort by Color"))
+                    ),
                     p("Created by ",
                     tags$a(target = "_blank",
                            href = "https://wjschne.github.io/",
-                           "W. Joel Schneider"))
+                           "W. Joel Schneider"), "to accompany", tags$br(), 
+                    "Schneider, W. J., & Ji, F. (2023). ", 
+                    tags$a(target = "_blank",
+                           href = "https://doi.org/10.1007/s40817-022-00137-x",
+                           "Detecting unusual score patterns in the context of relevant predictors."), 
+                    " ",
+                    tags$em("Journal of Pediatric Neuropsychology, 9,"),
+                    " 1–17."
+                    ), width = 3
+
                     
                   ),
                   mainPanel(
@@ -166,7 +177,7 @@ ui <- fluidPage(theme = my_theme,
                         h2("Interpret Distances")
                                )
                     )
-                  )
+                  , width = 9)
                 ))
 
 server <- function(input, output) {
@@ -198,7 +209,7 @@ server <- function(input, output) {
       mutate(
         v_dep = ifelse(Role == 1, Tests, NA_character_),
         v_ind = ifelse(Role == 2, Tests, NA_character_),
-        v_ind_composite = ifelse(Role == 3, Tests, NA_character_)
+        v_ind_composites = ifelse(Role == 3, Tests, NA_character_)
       ) |>
       group_by(Distance) |>
       summarise(
@@ -208,7 +219,7 @@ server <- function(input, output) {
         v_ind = list(v_ind) |> map(\(x) {
           l = x[!is.na(x)]
         }),
-        v_ind_composite = list(v_ind_composite) |> map(\(x) {
+        v_ind_composites = list(v_ind_composites) |> map(\(x) {
           l = x[!is.na(x)]
         }),
         .groups = "drop"
@@ -256,7 +267,8 @@ server <- function(input, output) {
                        names_to = "Test",
                        values_to = "Score"),
         by = "Test",
-        multiple = "all"
+        multiple = "all",
+        relationship = "many-to-many"
       ) |>
       group_by(`Person ID`, Composite, composite_mean, composite_sd) |>
       nest() |>
@@ -357,7 +369,7 @@ server <- function(input, output) {
         labels = prob_label
       ) +
       theme(
-        axis.text.x = element_text(angle = -90, vjust = .5),
+        axis.text.x = element_text(angle = -90, vjust = .5, hjust = 0),
         legend.position = "top",
         legend.key.width = unit(20, "mm")
       )
@@ -415,31 +427,42 @@ server <- function(input, output) {
   # Distances ----
   mycondmaha <- reactive({
     dd <- d_Distance() |> filter(Distance == selectedDistance())
-    v_all <- unique(
-      c(dd$v_dep[[1]], 
-        dd$v_ind[[1]], 
-        dd$v_ind_composite[[1]]))
+
 
     v_ind_composites <- NULL
     v_ind <- NULL
     v_dep <- NULL
-    
-    
-    if (length(dd$v_ind_composite[[1]]) > 0) {
-      v_ind_composites <- dd$v_ind_composite[[1]]
-    }
-    
-    if (length(dd$v_ind[[1]]) > 0) {
-      v_ind <- dd$v_ind[[1]]
+
+    if (!is.null(dd["v_ind_composites"])) {
+      if (length(dd["v_ind_composites"][[1]]) > 0) {
+        v_ind_composites <- dd$v_ind_composites[[1]]
       }
       
-    if (length(dd$v_dep[[1]]) > 0) {
-      v_dep <- dd$v_dep[[1]]
     }
+    if (!is.null(dd["v_ind"])) {
+    if (length(dd["v_ind"][[1]]) > 0) {
+      v_ind <- dd$v_ind[[1]]
+      }}
     
-    if (length(dd$v_ind[[1]]) == 0) {
+    if (!is.null(dd["v_dep"])) {
+    if (length(dd["v_dep"][[1]]) > 0) {
+      v_dep <- dd$v_dep[[1]]
+    }}
+    
+    if (!is.null(dd["v_ind"])) {
+    if (length(dd["v_ind"][[1]]) == 0) {
       dd$v_ind <- NULL
-    }
+    }}
+    
+    if (!is.null(dd["v_ind_composites"])) {
+    if (length(dd["v_ind_composites"][[1]]) == 0) {
+      dd$v_ind_composites <- NULL
+    }}
+    
+    v_all <- unique(
+      c(v_dep, 
+        v_ind, 
+        v_ind_composites))
     
     d_personscore <- d_person() |> 
       filter(Test %in% v_all) 
@@ -456,8 +479,24 @@ server <- function(input, output) {
       select(Test, Score) |> 
       pivot_wider(names_from = Test, values_from = Score) |> 
       select(all_of(v_all))
-    
 
+    if (length(v_ind_composites) == 0) {
+      v_ind_composites <- NULL
+    }
+    
+    if (length(v_ind) == 0) {
+      v_ind <- NULL
+    }
+    if (length(v_dep) == 0) {
+      v_dep <- NULL
+    }
+    
+    if (is.null(v_dep)) {
+      return(NULL)
+    }
+
+
+    
     
     dcm <- cond_maha(
       data = d_person_score,
@@ -475,6 +514,7 @@ server <- function(input, output) {
 output$condplot <- renderPlot({
   req(input$inputdistance)
   x <- mycondmaha()
+  if (is.null(x)) return(NULL)
   
   p_tail <- .05
   score_digits <- ifelse(min(x$sigma) >= 3, 0, 2)
@@ -503,20 +543,54 @@ output$condplot <- renderPlot({
              fcol = scales::dscale(Color, scales::viridis_pal(option = "D", begin = 0.2, end = .9))) |> 
       mutate(fcol = ifelse(is.na(Color), "#bbbbbb", fcol)) 
     
-    x$d_dep %>%
+    
+    
+    d <- x$d_dep %>%
       tibble::rownames_to_column("id") %>%
       dplyr::mutate(id = factor(id)) %>%
       tidyr::pivot_longer(-"id",
                           names_to = "Variable",
                           values_to = "Score") %>%
       dplyr::left_join(d_stats, by = "Variable") %>%
+      dplyr::mutate(Variable = forcats::fct_inorder(Variable)) %>% 
       dplyr::mutate(
         z = (Score - mu) / sigma,
         z_p = stats::pnorm(z),
         in_tail = z_p < p_tail / 2 |
           z_p > (1 - p_tail / 2)
-      ) |> 
-      ggplot(aes(Variable, z)) +
+      )
+    
+    if (input$sort) {
+      if (input$color) {
+        d <- d |> 
+          group_by(Color) |> 
+          arrange(Color, desc(z_p), Variable) |> 
+          ungroup() |> 
+          mutate(Variable = fct_inorder(Variable))
+        
+      } else {
+        d <- d |> 
+          arrange(desc(z_p), Variable) |> 
+          mutate(Variable = fct_inorder(Variable))
+        
+      }
+      
+      
+
+    } else {
+      if (input$color) {
+        d <- d |>
+          group_by(Color) |>
+          arrange(Color) |>
+          ungroup() |>
+          mutate(Variable = fct_inorder(Variable))
+      } else {
+        d |>
+          mutate(Variable = fct_inorder(Variable))
+      }
+
+    }
+      ggplot(d, aes(Variable, z)) +
       ggnormalviolin::geom_normalviolin(
         data = d_stats,
         aes(
@@ -561,11 +635,11 @@ output$condplot <- renderPlot({
                          minor_breaks = minor_breaks, 
                          labels = \(x) signs::signs(x * break_width + break_mu), 
                          sec.axis = sec_axis(name = "Standard Deviations", 
-                                             trans = \(x) x, 
+                                             transform = \(x) x, 
                                              breaks = major_breaks, 
                                              labels = signs::signs)) +
-      scale_x_discrete(NULL,
-                                expand = expansion(add = 1)) +
+        scale_x_discrete(NULL,
+                         expand = expansion(add = 1), labels = \(x) str_wrap(x, 10, whitespace_only = FALSE)) +
       labs(title = bquote(list(
         Mahalanobis~Distance == .(formatC(x$dM_dep, 2, format = "f")),
         italic(p) == .(proportion_round(x$dM_dep_p))
@@ -608,9 +682,9 @@ output$condplot <- renderPlot({
     d <- x$d_score %>%
       mutate(
         SD = ifelse(
-          test = is.na(SEE),
+          test = is.na(zSEE),
           yes = 1,
-          no = SEE * 1
+          no = zSEE * 1
         ),
         z = (Score - mu) / sigma,
         yhat = ifelse(is.na(Predicted), 0, (Predicted - mu) / sigma),
@@ -627,18 +701,33 @@ output$condplot <- renderPlot({
       mutate(fcol = ifelse(is.na(Color), "#bbbbbb", fcol))
     
     if (input$sort) {
-      d <- d |> 
-        group_by(Color) |> 
-        arrange(Color, desc(p), Variable) |> 
-        ungroup() |> 
-        mutate(Variable = fct_inorder(Variable))
-      # d <- mutate(d, Variable = fct_reorder(Variable, desc(p), .fun = mean))
+      if (input$color) {
+        d <- d |> 
+          group_by(Color) |> 
+          arrange(Color, desc(p), Variable) |> 
+          ungroup() |> 
+          mutate(Variable = fct_inorder(Variable))
+        
+      } else {
+        d <- d |> 
+          arrange(desc(p), Variable) |> 
+          mutate(Variable = fct_inorder(Variable))
+      }
+      
+
     } else {
-      d <- d |>
-        group_by(Color) |>
-        arrange(Color) |>
-        ungroup() |>
-        mutate(Variable = fct_inorder(Variable))
+      if (input$color) {
+        d <- d |>
+          group_by(Color) |>
+          arrange(Color) |>
+          ungroup() |>
+          mutate(Variable = fct_inorder(Variable))
+      } else {
+        d <- d |>
+          mutate(Variable = fct_inorder(Variable))
+        
+      }
+
     }
     
     
@@ -726,11 +815,11 @@ output$condplot <- renderPlot({
                          minor_breaks = minor_breaks, 
                          labels = \(x) signs::signs(x * break_width + break_mu), 
                          sec.axis = sec_axis(name = "Standard Deviations", 
-                                             trans = \(x) x, 
+                                             transform = \(x) x, 
                                              breaks = major_breaks, 
                                              labels = signs::signs)) +
       scale_x_discrete(NULL,
-                       expand = expansion(add = 1), labels = \(x) str_wrap(x, 10)) +
+                       expand = expansion(add = 1), labels = \(x) str_wrap(x, 10, whitespace_only = FALSE)) +
       labs(title = bquote(list(
         Conditional ~ Mahalanobis ~ Distance ~ (italic(d[CM])) == .(formatC(
           x$dCM,
