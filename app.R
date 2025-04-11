@@ -232,6 +232,7 @@ server <- function(input, output) {
   d_test <- reactive({
     bind_rows(d_subtest(), d_composite() |> 
                 rename(Test = "Composite Name") |> 
+                mutate(Test = as.character(Test)) %>% 
                 select(Test, Mean, SD))
     
   })
@@ -465,7 +466,21 @@ server <- function(input, output) {
         v_ind_composites))
     
     d_personscore <- d_person() |> 
-      filter(Test %in% v_all) 
+      filter(Test %in% v_all) %>% 
+      filter(SS != 0) 
+    
+    # print(d_personscore, n = 100)
+    
+    v_dep <- v_dep[v_dep %in% d_personscore$Test]
+    v_ind <- v_ind[v_ind %in% d_personscore$Test]
+    v_ind_composites <- v_ind_composites[v_ind_composites %in% d_personscore$Test]
+    
+    v_all <- unique(
+      c(v_dep, 
+        v_ind, 
+        v_ind_composites))
+    
+   
     
     mu <- d_personscore |> 
       select(Test, Mean) |> 
@@ -497,7 +512,7 @@ server <- function(input, output) {
 
 
     
-    
+
     dcm <- cond_maha(
       data = d_person_score,
       R = R()[v_all, v_all],
